@@ -5,7 +5,7 @@ services:
   # ===== CORE: Traefik Reverse Proxy =====
   traefik:
     image: traefik:v3.0
-    container_name: openwa-traefik
+    container_name: openwa-traefik-v2
     profiles: ['with-proxy', 'full']
     restart: unless-stopped
     ports:
@@ -23,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: openwa-api
+    container_name: openwa-api-v2
     restart: unless-stopped
     ports:
       - '${API_PORT:-2785}:2785'
@@ -102,7 +102,7 @@ services:
     build:
       context: ./dashboard
       dockerfile: Dockerfile.traefik
-    container_name: openwa-dashboard
+    container_name: openwa-dashboard-v2
     profiles: ['with-dashboard', 'full']
     restart: unless-stopped
     expose:
@@ -116,7 +116,7 @@ services:
   # ===== OPTIONAL: Built-in PostgreSQL =====
   postgres:
     image: postgres:16-alpine
-    container_name: openwa-postgres
+    container_name: openwa-postgres-v2
     profiles: ['postgres']
     restart: unless-stopped
     ports:
@@ -139,7 +139,7 @@ services:
   # ===== OPTIONAL: Built-in Redis =====
   redis:
     image: redis:7-alpine
-    container_name: openwa-redis
+    container_name: openwa-redis-v2
     profiles: ['redis']
     restart: unless-stopped
     ports:
@@ -159,7 +159,7 @@ services:
   # ===== OPTIONAL: Built-in MinIO (S3-compatible) =====
   minio:
     image: minio/minio
-    container_name: openwa-minio
+    container_name: openwa-minio-v2
     profiles: ['minio']
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -192,5 +192,4 @@ volumes:
 
 networks:
   default:
-    external: true
-    name: openwa-network
+    name: openwa-network-v2
