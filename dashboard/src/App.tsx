@@ -36,14 +36,15 @@ function AppContent() {
   const { setRole, role } = useRole();
 
   const handleLogin = async (key: string) => {
-    setApiKey(key);
-    sessionStorage.setItem('openwa_api_key', key);
+    const trimmedKey = key.trim();
+    setApiKey(trimmedKey);
+    sessionStorage.setItem('openwa_api_key', trimmedKey);
 
     // Fetch the role from API
     try {
       const response = await fetch('/api/auth/validate', {
         method: 'POST',
-        headers: { 'X-API-Key': key },
+        headers: { 'X-API-Key': trimmedKey },
       });
       if (response.ok) {
         const data = await response.json();

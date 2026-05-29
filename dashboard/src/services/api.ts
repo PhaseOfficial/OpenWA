@@ -309,7 +309,7 @@ export const infraApi = {
       body: JSON.stringify(config),
     }),
   saveConfig: (config: SaveConfigPayload) =>
-    request<{ message: string; saved: boolean; envPath: string; profiles: string[] }>('/infra/config', {
+    request<{ message: string; saved: boolean; envPath: string; profiles: string[]; restarting?: boolean }>('/infra/config', {
       method: 'PUT',
       body: JSON.stringify(config),
     }),

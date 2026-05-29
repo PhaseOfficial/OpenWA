@@ -304,7 +304,7 @@ export class DockerService implements OnModuleInit {
           Binds: spec.volumes?.map(v => `${v.name}:${v.path}`),
           PortBindings: spec.ports?.reduce(
             (acc, p) => {
-              acc[`${p.container}/tcp`] = [{ HostIp: '127.0.0.1', HostPort: p.host.toString() }];
+              acc[`${p.container}/tcp`] = [{ HostIp: '0.0.0.0', HostPort: p.host.toString() }];
               return acc;
             },
             {} as Record<string, { HostIp: string; HostPort: string }[]>,

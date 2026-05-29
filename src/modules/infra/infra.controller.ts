@@ -207,7 +207,9 @@ export class InfraController {
   @ApiOperation({ summary: 'Save infrastructure configuration to .env file' })
   @ApiResponse({ status: 200, description: 'Configuration saved' })
   @ApiBody({ description: 'Configuration to save' })
-  saveConfig(@Body() config: SaveConfigDto): { message: string; saved: boolean; envPath: string; profiles: string[] } {
+  async saveConfig(
+    @Body() config: SaveConfigDto,
+  ): Promise<{ message: string; saved: boolean; envPath: string; profiles: string[]; restarting?: boolean }> {
     try {
       // Build .env content from config
       const envLines: string[] = [];
@@ -225,8 +227,10 @@ export class InfraController {
         envLines.push(`POSTGRES_BUILTIN=${config.database.builtIn ? 'true' : 'false'}`);
         if (config.database.type === 'postgres') {
           if (config.database.builtIn) {
-            // Built-in PostgreSQL - use container name as host
-            envLines.push('DATABASE_HOST=postgres');
+            // Use container name if in Docker, otherwise use OPENWA_HOST or default to 127.0.0.1
+            const isDocker = fs.existsSync('/.dockerenv');
+            const dbHost = isDocker ? 'postgres' : (process.env.OPENWA_HOST || '127.0.0.1');
+            envLines.push(`DATABASE_HOST=${dbHost}`);
             envLines.push('DATABASE_PORT=5432');
             envLines.push('DATABASE_USERNAME=openwa');
             envLines.push('DATABASE_PASSWORD=openwa');
@@ -253,8 +257,10 @@ export class InfraController {
       envLines.push(`QUEUE_ENABLED=${config.queue?.enabled ? 'true' : 'false'}`);
       if (config.redis?.enabled) {
         if (config.redis.builtIn) {
-          // Built-in Redis - use container name as host
-          envLines.push('REDIS_HOST=redis');
+          // Detect if we are in Docker. If not, use the current host IP or default to 127.0.0.1
+          const isDocker = fs.existsSync('/.dockerenv');
+          const redisHost = isDocker ? 'redis' : (process.env.OPENWA_HOST || '127.0.0.1');
+          envLines.push(`REDIS_HOST=${redisHost}`);
           envLines.push('REDIS_PORT=6379');
           profiles.push('redis');
         } else {
@@ -277,8 +283,10 @@ export class InfraController {
           envLines.push(`STORAGE_PATH=${config.storage.localPath || './uploads'}`);
         } else if (config.storage.type === 's3') {
           if (config.storage.builtIn) {
-            // Built-in MinIO - use container name as endpoint
-            envLines.push('S3_ENDPOINT=http://minio:9000');
+            // Use container name if in Docker, otherwise use OPENWA_HOST or default to 127.0.0.1
+            const isDocker = fs.existsSync('/.dockerenv');
+            const s3Host = isDocker ? 'minio' : (process.env.OPENWA_HOST || '127.0.0.1');
+            envLines.push(`S3_ENDPOINT=http://${s3Host}:9000`);
             envLines.push('S3_ACCESS_KEY=minioadmin');
             envLines.push('S3_SECRET_KEY=minioadmin');
             envLines.push('S3_BUCKET=openwa');
@@ -317,11 +325,43 @@ export class InfraController {
       fs.writeFileSync(envPath, envLines.join('\n'), 'utf8');
       this.logger.log('Configuration saved', { envPath });
 
+      // Determine if we should trigger an automatic restart
+      // If Redis or Queue was just enabled, we definitely want to restart
+      const currentRedisEnabled = process.env.REDIS_ENABLED === 'true';
+      const currentQueueEnabled = process.env.QUEUE_ENABLED === 'true';
+      
+      const shouldRestart = 
+        (config.redis?.enabled === true && !currentRedisEnabled) ||
+        (config.queue?.enabled === true && !currentQueueEnabled);
+
+      if (shouldRestart) {
+        this.logger.log('Triggering automatic restart due to Redis activation');
+        // Calculate profiles to remove (those currently active but not in new profiles)
+        const currentProfiles: string[] = [];
+        if (process.env.POSTGRES_BUILTIN === 'true') currentProfiles.push('postgres');
+        if (process.env.REDIS_BUILTIN === 'true') currentProfiles.push('redis');
+        if (process.env.MINIO_BUILTIN === 'true') currentProfiles.push('minio');
+
+        const profilesToRemove = currentProfiles.filter(p => !profiles.includes(p));
+
+        // We don't await this as it includes a shutdown delay
+        void this.executeRestart(profiles, profilesToRemove);
+
+        return {
+          message: `Configuration saved. Redis enabled. Server is restarting to apply changes...`,
+          saved: true,
+          restarting: true,
+          envPath,
+          profiles,
+        };
+      }
+
       const profileMsg = profiles.length > 0 ? ` Docker profiles required: ${profiles.join(', ')}.` : '';
 
       return {
         message: `Configuration saved successfully.${profileMsg} Server restart required to apply changes.`,
         saved: true,
+        restarting: false,
         envPath,
         profiles,
       };
@@ -334,6 +374,7 @@ export class InfraController {
       };
     }
   }
+
   @Post('restart')
   @ApiOperation({ summary: 'Request server restart with Docker orchestration' })
   @ApiResponse({ status: 200, description: 'Server will restart with new profiles' })
@@ -348,11 +389,38 @@ export class InfraController {
   }> {
     const profiles = body?.profiles || [];
     const profilesToRemove = body?.profilesToRemove || [];
+
+    const result = await this.executeRestart(profiles, profilesToRemove);
+
+    return {
+      message:
+        profiles.length > 0 || profilesToRemove.length > 0
+          ? `Server is restarting. Enabling: ${profiles.join(', ') || 'none'}. Disabling: ${profilesToRemove.join(', ') || 'none'}.`
+          : 'Server is restarting. Please wait...',
+      restarting: true,
+      profiles,
+      profilesToRemove,
+      estimatedTime: result.estimatedTime,
+      orchestration: result.orchestration,
+      removal: result.removal,
+    };
+  }
+
+  /**
+   * Internal method to execute the restart logic
+   */
+  private async executeRestart(
+    profiles: string[],
+    profilesToRemove: string[],
+  ): Promise<{
+    estimatedTime: number;
+    orchestration?: object;
+    removal?: { removed: string[]; errors: string[] };
+  }> {
     let orchestrationResult: object | undefined;
     let removalResult: { removed: string[]; errors: string[] } | undefined;
 
-    this.logger.log('Restart requested', { profiles });
-    this.logger.log('Profiles to remove', { profilesToRemove });
+    this.logger.log('Executing restart', { profiles, profilesToRemove });
 
     // If profiles are specified, orchestrate Docker containers
     if (this.dockerService.isDockerAvailable()) {
@@ -373,14 +441,12 @@ export class InfraController {
             removalResult.errors.push(`Error removing ${profile}: ${err}`);
           }
         }
-        this.logger.log('Removal result', { removalResult });
       }
 
       // Then, start containers for enabled services
       if (profiles.length > 0) {
         this.logger.log('Orchestrating enabled profiles...');
         orchestrationResult = await this.dockerService.orchestrateProfiles(profiles);
-        this.logger.log('Orchestration result', { orchestrationResult });
       }
     } else {
       this.logger.warn('Docker not available, writing signal file instead');
@@ -394,7 +460,6 @@ export class InfraController {
           action: 'restart-with-profiles',
         };
         fs.writeFileSync(signalFile, JSON.stringify(orchestrationRequest, null, 2), 'utf8');
-        this.logger.log('Orchestration request written', { signalFile });
       } catch (err) {
         this.logger.error('Failed to write orchestration request', err instanceof Error ? err.message : String(err));
       }
@@ -403,21 +468,14 @@ export class InfraController {
     // Schedule graceful shutdown after delay to allow response and container orchestration
     void this.shutdownService.shutdown(3000);
 
-    // Calculate estimated time - base 15s + additional for each service (increased for reliability)
+    // Calculate estimated time
     let estimatedTime = 15;
     if (profiles.includes('postgres')) estimatedTime += 20;
     if (profiles.includes('redis')) estimatedTime += 13;
     if (profiles.includes('minio')) estimatedTime += 15;
-    if (profilesToRemove.length > 0) estimatedTime += profilesToRemove.length * 5; // +5s per removal
+    if (profilesToRemove.length > 0) estimatedTime += profilesToRemove.length * 5;
 
     return {
-      message:
-        profiles.length > 0 || profilesToRemove.length > 0
-          ? `Server is restarting. Enabling: ${profiles.join(', ') || 'none'}. Disabling: ${profilesToRemove.join(', ') || 'none'}.`
-          : 'Server is restarting. Please wait...',
-      restarting: true,
-      profiles,
-      profilesToRemove,
       estimatedTime,
       orchestration: orchestrationResult,
       removal: removalResult,

@@ -162,8 +162,8 @@ async function bootstrap() {
   const port = process.env.PORT || 2785;
   await app.listen(port);
 
-  console.log(`🚀 OpenWA is running on: http://localhost:${port}`);
-  console.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
+  console.log(`🚀 OpenWA is running on port: ${port}`);
+  console.log(`📚 Swagger docs: http://localhost:${port}/api/docs (Replace 'localhost' with your IP for network access)`);
 }
 
 void bootstrap();

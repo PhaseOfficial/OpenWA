@@ -54,8 +54,8 @@ export class AuthService implements OnModuleInit {
     }
 
     // Always show the welcome banner on startup
-    const apiBaseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 2785}`;
-    const dashboardUrl = process.env.DASHBOARD_URL || `http://localhost:${process.env.DASHBOARD_PORT || 2886}`;
+    const apiBaseUrl = process.env.BASE_URL || `[API PORT: ${process.env.PORT || 2785}]`;
+    const dashboardUrl = process.env.DASHBOARD_URL || `[DASHBOARD PORT: ${process.env.DASHBOARD_PORT || 2886}]`;
 
     this.logger.log('');
     this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -70,7 +70,7 @@ export class AuthService implements OnModuleInit {
     } else {
       this.logger.log('  🔑 API Key:');
     }
-    this.logger.log(`     ${displayKey}`);
+    this.logger.log(`    ${displayKey}`);
     this.logger.log('');
     this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     this.logger.log('');

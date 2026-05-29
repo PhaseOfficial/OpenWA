@@ -224,8 +224,42 @@ export function Infrastructure() {
       const result = await infraApi.saveConfig(payload);
       if (result.saved) {
         setPreviousProfiles(pendingProfiles);
-        setPendingProfiles(result.profiles || []);
-        setShowRestartModal(true);
+        const newProfiles = result.profiles || [];
+        setPendingProfiles(newProfiles);
+
+        if (result.restarting) {
+          // Backend already triggered a restart (e.g., Redis enabled)
+          // Start the countdown UI immediately
+          setRestartStatus('restarting');
+          
+          // Calculate estimated time (same logic as backend)
+          let estTime = 15;
+          if (newProfiles.includes('postgres')) estTime += 20;
+          if (newProfiles.includes('redis')) estTime += 13;
+          if (newProfiles.includes('minio')) estTime += 15;
+          
+          setRestartCountdown(estTime);
+          setShowRestartModal(true);
+          
+          // Wait a bit then start checking health
+          setTimeout(() => {
+            setRestartStatus('waiting');
+            const interval = setInterval(() => {
+              setRestartCountdown(prev => {
+                if (prev <= 1) {
+                  clearInterval(interval);
+                  return 0;
+                }
+                return prev - 1;
+              });
+            }, 1000);
+            checkServerHealth(() => clearInterval(interval));
+          }, 3000);
+        } else {
+          // Normal save, show modal to ask for manual restart
+          setShowRestartModal(true);
+          setRestartStatus('idle');
+        }
       } else {
         toast.error(t('infrastructure.toasts.saveFailed'), result.message);
       }
