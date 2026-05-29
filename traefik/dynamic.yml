@@ -29,9 +29,9 @@ http:
     api:
       loadBalancer:
         servers:
-          - url: 'http://openwa-api:2785'
+          - url: 'http://openwa-api-v3:2785'
 
     dashboard:
       loadBalancer:
         servers:
-          - url: 'http://openwa-dashboard:80'
+          - url: 'http://openwa-dashboard-v3:80'

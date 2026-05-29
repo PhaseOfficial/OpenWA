@@ -77,7 +77,7 @@ async function bootstrap() {
   });
 
   // Enhanced Security Headers (Phase 3 Security Audit)
-  app.use(
+  /* app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
@@ -88,20 +88,16 @@ async function bootstrap() {
           connectSrc: ["'self'"],
           fontSrc: ["'self'"],
           objectSrc: ["'none'"],
-          upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+          upgradeInsecureRequests: null, // Disable forcing HTTPS
         },
       },
-      hsts: {
-        maxAge: 31536000,
-        includeSubDomains: true,
-        preload: true,
-      },
+      hsts: false, // Disable HSTS (forcing HTTPS)
       noSniff: true,
       referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
       // Disable for API usage
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
-  );
+  ); */
 
   // CORS Configuration (Phase 3 Security Audit)
   const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || ['*'];
@@ -145,6 +141,7 @@ async function bootstrap() {
     .setTitle('OpenWA API')
     .setDescription('Open Source WhatsApp API Gateway - Free, Self-Hosted HTTP API')
     .setVersion('0.1.6')
+    .addServer('http://192.168.1.175:4785', 'Local Server')
     .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header' }, 'X-API-Key')
     .addTag('sessions', 'WhatsApp session management')
     .addTag('messages', 'Send and manage messages')
@@ -157,7 +154,12 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+    customSiteTitle: 'OpenWA API Documentation',
+  });
 
   const port = process.env.PORT || 2785;
   await app.listen(port);
